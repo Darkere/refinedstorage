@@ -406,9 +406,72 @@ public class CraftingTask implements ICraftingTask {
             if (remaining < 0) { //int overflow
                 return new CraftingTaskError(CraftingTaskErrorType.TOO_COMPLEX);
             }
-
+            Integer oldRemaining = null;
+            // remember remaining in case this does't work out. or needs to be crafted
             while (remaining > 0) {
-                if (fromSelf != null) {
+                if (craft instanceof Crafting) {
+                    if (possibleInput.hasContainerItem()) {
+                        for (ItemStack byproduct : pattern.getByproducts(replaceReusableItemInRecipe(recipe, possibleInput, ingredientNumber, craft))) {
+                            if (!byproduct.isEmpty() && API.instance().getComparer().isEqual(byproduct, possibleInput, 0)) {
+                                boolean usedBefore = ((Crafting) craft).introduceReusableItem(possibleInput, ingredientNumber);
+
+                                if (API.instance().getComparer().isEqual(byproduct, possibleInput, IComparer.COMPARE_NBT)) {
+                                    oldRemaining = remaining;
+                                    remaining = 1;
+                                } else {
+                                    if (oldRemaining != null) {
+                                        remaining = oldRemaining;
+                                        oldRemaining = null;
+                                    }
+                                    ItemStack overflowitem = null;
+                                    while (remaining > 0) {
+                                        ItemStack item = null;
+                                        if (!usedBefore) { //guarantees 1 item is not reused when 2 are needed for this craft
+                                            item = results.get(possibleInput, 0);
+                                        }
+                                        if (item == null) {
+                                            item = mutatedStorage.get(possibleInput, 0);
+                                            if (item == null) {
+                                                break;
+                                            } else {
+                                                toTake.add(item, 1);
+                                                toExtractInitial.add(item, 1);
+                                                mutatedStorage.remove(item, 1);
+                                            }
+                                        } else {
+                                            results.remove(item, 1);
+                                        }
+                                        overflowitem = item;
+
+                                        int uses = item.getMaxDamage() + 1 - item.getDamage();
+                                        // add the item X times to the stored Craft. This only works as we ignore damage
+                                        // when we are extracting from internal storage. This avoids problems, as we no longer
+                                        // have to readd the items after a craft completes
+                                        craft.addItemsToUse(ingredientNumber, item, Math.min(uses, remaining));
+
+                                        remaining -= uses;
+
+                                    }
+                                    if (remaining > 0) {
+                                        oldRemaining = remaining;
+                                        remaining = ((remaining - 1) / (possibleInput.getMaxDamage() + 1)) + 1; //CeilDiv
+                                        fromNetwork = null;
+                                        fromSelf = null;
+                                    } else {
+                                        ItemStack copy = overflowitem.copy();
+                                        copy.setCount(1);
+                                        copy.setDamage(overflowitem.getMaxDamage() + 1 + remaining);
+                                        results.add(copy);
+                                        fromSelf = results.get(possibleInput);
+
+                                    }
+                                }
+                                break; //on match don't try to find more
+                            }
+                        }
+                    }
+                }
+                if (fromSelf != null && remaining > 0) {
                     int toTake = Math.min(remaining, fromSelf.getCount());
 
                     craft.addItemsToUse(ingredientNumber, possibleInput, toTake);
@@ -472,6 +535,10 @@ public class CraftingTask implements ICraftingTask {
 
                             fromSelf = results.get(possibleInput);
                             fromNetwork = mutatedStorage.get(possibleInput);
+                            if (oldRemaining != null) {
+                                remaining = oldRemaining;
+                                oldRemaining = null;
+                            }
                         }
                     }
                 }
@@ -484,7 +551,9 @@ public class CraftingTask implements ICraftingTask {
             results.add(output, output.getCount() * qty);
 
             for (ItemStack byproduct : pattern.getByproducts(recipe)) {
-                results.add(byproduct, byproduct.getCount() * qty);
+                if (!((Crafting) craft).isReusableItem(byproduct)) {
+                    results.add(byproduct, byproduct.getCount() * qty);
+                }
             }
 
         } else {
@@ -585,6 +654,11 @@ public class CraftingTask implements ICraftingTask {
         return null;
     }
 
+    private NonNullList<ItemStack> replaceReusableItemInRecipe(NonNullList<ItemStack> recipe, ItemStack possibleInput, int ingredientNumber, Craft craft) {
+        craft.itemsToUse.get(ingredientNumber).amountPerSlot.keySet().forEach(x -> recipe.set(x, possibleInput));
+        return recipe;
+    }
+
     private void extractInitial() {
         if (!toExtractInitial.isEmpty()) {
             List<ItemStack> toRemove = new ArrayList<>();
@@ -647,6 +721,10 @@ public class CraftingTask implements ICraftingTask {
                     Pair<NonNullList<ItemStack>, Integer> pair = entry.getValue();
                     if (pair.getLeft().size() == inputs.size()) {
                         match = true;
+                        if (inputs.get(0).hasContainerItem()) { // don't combine reusable items
+                            match = false;
+                            break;
+                        }
                         for (int j = 0; j < inputs.size(); j++) {
                             if (!API.instance().getComparer().isEqualNoQuantity(pair.getLeft().get(j), inputs.get(j))) {
                                 match = false;
@@ -692,9 +770,9 @@ public class CraftingTask implements ICraftingTask {
                         return;
                     }
 
-                    if (extractFromInternalItemStorage(c.getItemsToUse(true), this.internalStorage, Action.SIMULATE) != null) {
+                    if (extractFromInternalItemStorage(c.getItemsToUse(true), this.internalStorage, Action.SIMULATE, c.getReusableIngredients()) != null) {
 
-                        Map<Integer, Queue<ItemStack>> extracted = extractFromInternalItemStorage(c.getItemsToUse(false), this.internalStorage, Action.PERFORM);
+                        Map<Integer, Queue<ItemStack>> extracted = extractFromInternalItemStorage(c.getItemsToUse(false), this.internalStorage, Action.PERFORM, c.getReusableIngredients());
                         NonNullList<ItemStack> appliedRecipe = c.getItemsAsRecipe(extracted);
                         ItemStack output = c.getPattern().getOutput(appliedRecipe);
 
@@ -771,7 +849,7 @@ public class CraftingTask implements ICraftingTask {
 
                     boolean hasAll = false;
                     IStackList<FluidStack> extractedFluids = null;
-                    Map<Integer, Queue<ItemStack>> extracted = extractFromInternalItemStorage(p.getItemsToUse(true), this.internalStorage, Action.SIMULATE);
+                    Map<Integer, Queue<ItemStack>> extracted = extractFromInternalItemStorage(p.getItemsToUse(true), this.internalStorage, Action.SIMULATE, new HashSet<>());
                     if (extracted != null) {
                         extractedFluids = extractFromInternalFluidStorage(p.getFluidsToUse().getStacks(), this.internalFluidStorage, Action.SIMULATE);
                         if (extractedFluids != null) {
@@ -801,7 +879,7 @@ public class CraftingTask implements ICraftingTask {
                     if (hasAll && canInsert) {
                         p.setState(ProcessingState.READY);
 
-                        extractFromInternalItemStorage(p.getItemsToUse(false), this.internalStorage, Action.PERFORM);
+                        extractFromInternalItemStorage(p.getItemsToUse(false), this.internalStorage, Action.PERFORM, new HashSet<>());
                         extractFromInternalFluidStorage(p.getFluidsToUse().getStacks(), this.internalFluidStorage, Action.PERFORM);
 
                         insertIntoInventory(container.getConnectedInventory(), itemsToInsert, Action.PERFORM);
@@ -822,12 +900,12 @@ public class CraftingTask implements ICraftingTask {
         }
     }
 
-    private static Map<Integer, Queue<ItemStack>> extractFromInternalItemStorage(Map<Integer, IStackList<ItemStack>> stacks, IStorageDisk<ItemStack> storage, Action action) {
+    private static Map<Integer, Queue<ItemStack>> extractFromInternalItemStorage(Map<Integer, IStackList<ItemStack>> stacks, IStorageDisk<ItemStack> storage, Action action, Collection<Integer> reusableEntries) {
         Map<Integer, Queue<ItemStack>> extracted = new HashMap<>();
         for (Map.Entry<Integer, IStackList<ItemStack>> entry : stacks.entrySet()) {
             Queue<ItemStack> queue = new ArrayDeque<>();
             for (StackListEntry<ItemStack> listEntry : entry.getValue().getStacks()) {
-                ItemStack result = storage.extract(listEntry.getStack(), listEntry.getStack().getCount(), DEFAULT_EXTRACT_FLAGS, action);
+                ItemStack result = storage.extract(listEntry.getStack(), listEntry.getStack().getCount(), reusableEntries.contains(entry.getKey()) ? 0 : DEFAULT_EXTRACT_FLAGS, action);
 
                 if (result == ItemStack.EMPTY || result.getCount() != listEntry.getStack().getCount()) {
                     if (action == Action.PERFORM) {
