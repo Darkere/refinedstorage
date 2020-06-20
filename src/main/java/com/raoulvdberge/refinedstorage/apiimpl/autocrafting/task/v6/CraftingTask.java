@@ -474,7 +474,7 @@ public class CraftingTask implements ICraftingTask {
                 if (fromSelf != null && remaining > 0) {
                     int toTake = Math.min(remaining, fromSelf.getCount());
 
-                    craft.addItemsToUse(ingredientNumber, possibleInput, toTake);
+                    craft.addItemsToUse(ingredientNumber, possibleInput, oldRemaining == null ? toTake : oldRemaining);
                     results.remove(fromSelf, toTake);
 
                     remaining -= toTake;
@@ -486,7 +486,7 @@ public class CraftingTask implements ICraftingTask {
 
                     this.toTake.add(possibleInput, toTake);
 
-                    craft.addItemsToUse(ingredientNumber, possibleInput, toTake);
+                    craft.addItemsToUse(ingredientNumber, possibleInput, oldRemaining == null ? toTake : oldRemaining);
 
                     mutatedStorage.remove(fromNetwork, toTake);
 
