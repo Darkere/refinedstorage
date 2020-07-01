@@ -1,14 +1,16 @@
 package com.refinedmods.refinedstorage.apiimpl.autocrafting.task.v6;
 
+import com.google.common.collect.MultimapBuilder;
+import com.google.common.collect.SetMultimap;
 import com.refinedmods.refinedstorage.api.autocrafting.ICraftingPattern;
 import com.refinedmods.refinedstorage.api.autocrafting.task.CraftingTaskReadException;
 import com.refinedmods.refinedstorage.api.network.INetwork;
-import com.refinedmods.refinedstorage.util.StackUtils;
+import com.refinedmods.refinedstorage.apiimpl.API;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.CompoundNBT;
 import net.minecraft.util.NonNullList;
 
-import java.util.*;
+import java.util.Collection;
 
 class Crafting extends Craft {
     private SetMultimap<ItemStack,Integer> reusableItems= MultimapBuilder.hashKeys().hashSetValues().build();
