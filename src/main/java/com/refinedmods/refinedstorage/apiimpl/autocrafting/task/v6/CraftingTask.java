@@ -260,7 +260,7 @@ public class CraftingTask implements ICraftingTask {
             req.setAmount(qty);
             this.toCraftFluids.add(req);
         }
-        if(missing.isEmpty()){
+        if (missing.isEmpty()) {
             crafts.values().forEach(c -> {
                 totalSteps += c.getQuantity();
                 if (c instanceof Processing) {
@@ -374,7 +374,7 @@ public class CraftingTask implements ICraftingTask {
         boolean root) {
 
         if (System.currentTimeMillis() - calculationStarted > RS.SERVER_CONFIG.getAutocrafting().getCalculationTimeoutMs()) {
-            return new CraftingTaskError(CraftingTaskErrorType.TOO_COMPLEX);
+            //        return new CraftingTaskError(CraftingTaskErrorType.TOO_COMPLEX);
         }
 
         if (!patternsUsed.add(pattern)) {
@@ -424,7 +424,9 @@ public class CraftingTask implements ICraftingTask {
                                 boolean usedBefore = ((Crafting) craft).introduceReusableItem(possibleInput, ingredientNumber);
 
                                 if (API.instance().getComparer().isEqual(byproduct, possibleInput, IComparer.COMPARE_NBT)) {
-                                    oldRemaining = remaining;
+                                    if (oldRemaining == null) {
+                                        oldRemaining = remaining;
+                                    }
                                     remaining = 1;
                                 } else {
                                     if (oldRemaining != null) {
@@ -483,7 +485,10 @@ public class CraftingTask implements ICraftingTask {
                     int toTake = Math.min(remaining, fromSelf.getCount());
 
                     craft.addItemsToUse(ingredientNumber, possibleInput, oldRemaining == null ? toTake : oldRemaining);
-                    results.remove(fromSelf, toTake);
+
+                    if (oldRemaining == null) {
+                        results.remove(fromSelf, toTake);
+                    }
 
                     remaining -= toTake;
 
@@ -495,6 +500,10 @@ public class CraftingTask implements ICraftingTask {
                     this.toTake.add(possibleInput, toTake);
 
                     craft.addItemsToUse(ingredientNumber, possibleInput, oldRemaining == null ? toTake : oldRemaining);
+
+                    if (oldRemaining != null) {
+                        results.add(possibleInput, 1);
+                    }
 
                     mutatedStorage.remove(fromNetwork, toTake);
 
@@ -868,7 +877,7 @@ public class CraftingTask implements ICraftingTask {
                     boolean canInsert = false;
                     List<ItemStack> itemsToInsert = null;
                     if (hasAll) {
-                        itemsToInsert =  p.getItemsAsList(extracted);
+                        itemsToInsert = p.getItemsAsList(extracted);
                         canInsert = insertIntoInventory(container.getConnectedInventory(), itemsToInsert, Action.SIMULATE);
                         if (canInsert) {
                             canInsert = insertIntoTank(container.getConnectedFluidInventory(), extractedFluids.getStacks(), Action.SIMULATE);
@@ -1241,7 +1250,7 @@ public class CraftingTask implements ICraftingTask {
                 }
 
                 for (StackListEntry<ItemStack> put : p.getItemsToDisplay().getStacks()) {
-                    if (p.getProcessing() > 0|| p.getState() !=ProcessingState.READY) {
+                    if (p.getProcessing() > 0 || p.getState() != ProcessingState.READY) {
                         ICraftingMonitorElement element = new ItemCraftingMonitorElement(put.getStack(), 0, 0, put.getStack().getCount() * p.getProcessing(), 0, 0);
 
                         if (p.getState() == ProcessingState.MACHINE_DOES_NOT_ACCEPT) {
@@ -1251,17 +1260,17 @@ public class CraftingTask implements ICraftingTask {
                         } else if (p.getState() == ProcessingState.LOCKED) {
                             element = new ErrorCraftingMonitorElement(element, "gui.refinedstorage.crafting_monitor.crafter_is_locked");
                         }
-                        elements.add(element,true);
+                        elements.add(element, true);
                     }
                 }
                 for (StackListEntry<ItemStack> receive : p.getItemsToReceive().getStacks()) {
                     int count = p.getNeeded(receive.getStack());
                     if (count > 0) {
-                        elements.add(new ItemCraftingMonitorElement(receive.getStack(), 0, 0, 0, count, 0),true);
+                        elements.add(new ItemCraftingMonitorElement(receive.getStack(), 0, 0, 0, count, 0), true);
                     }
                 }
                 for (StackListEntry<FluidStack> put : p.getFluidsToUse().getStacks()) {
-                    if (p.getProcessing() > 0|| p.getState() !=ProcessingState.READY) {
+                    if (p.getProcessing() > 0 || p.getState() != ProcessingState.READY) {
                         ICraftingMonitorElement element = new FluidCraftingMonitorElement(put.getStack(), 0, 0, put.getStack().getAmount() * p.getProcessing(), 0, 0);
                         if (p.getState() == ProcessingState.MACHINE_DOES_NOT_ACCEPT) {
                             element = new ErrorCraftingMonitorElement(element, "gui.refinedstorage.crafting_monitor.machine_does_not_accept_fluid");
@@ -1270,14 +1279,14 @@ public class CraftingTask implements ICraftingTask {
                         } else if (p.getState() == ProcessingState.LOCKED) {
                             element = new ErrorCraftingMonitorElement(element, "gui.refinedstorage.crafting_monitor.crafter_is_locked");
                         }
-                        elements.add(element,true);
+                        elements.add(element, true);
                     }
                 }
 
                 for (StackListEntry<FluidStack> receive : p.getFluidsToReceive().getStacks()) {
                     int count = p.getNeeded(receive.getStack());
                     if (count > 0) {
-                        elements.add(new FluidCraftingMonitorElement(receive.getStack(), 0, 0, 0, count, 0),true);
+                        elements.add(new FluidCraftingMonitorElement(receive.getStack(), 0, 0, 0, count, 0), true);
                     }
                 }
             }
